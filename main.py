@@ -50,7 +50,7 @@ async def post_nff_matches(async_session, tournament):
             date_string = link.text
             if '.' in date_string and link.attrs['href'] not in file_links:
                 year = link.text.split('.')[-1]
-                if int(year) > 2015:
+                if int(year) >= 2020:
                     csv_writer.writerow([date_string, nff_canonical.format(link.attrs['href'])])
 
     return True
