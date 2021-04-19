@@ -3,6 +3,7 @@ import csv
 from pathlib import Path
 from os import walk, path, environ, remove
 from datetime import datetime
+from concurrent import futures
 
 from requests_html import AsyncHTMLSession, HTMLSession
 import asyncio
@@ -16,7 +17,7 @@ tournaments_default_url = "https://www.fotball.no/fotballdata/turnering/terminli
 
 def get_matches_links_from_file(tournament):
     if not path.isfile(f"matches/match_links_{tournament.name}.csv"):
-        with open(f"matches/match_links_{tournament.name}.csv", 'w') as csv_file:
+        with open(f"matches/match_links_{tournament.name}.csv", 'w', newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow(['date', 'link'])
 
@@ -42,7 +43,7 @@ async def post_nff_matches(async_session, tournament):
     selector = 'td > a'
     match_links = response.html.find(selector)
 
-    with open("matches/match_links_{}.csv".format(tournament.name), 'w') as csv_file:
+    with open("matches/match_links_{}.csv".format(tournament.name), 'w', newline='') as csv_file:
 
         csv_writer = csv.writer(csv_file, delimiter=';')
         csv_writer.writerow(['date', 'link'])
@@ -50,7 +51,7 @@ async def post_nff_matches(async_session, tournament):
             date_string = link.text
             if '.' in date_string and link.attrs['href'] not in file_links:
                 year = link.text.split('.')[-1]
-                if int(year) >= 2020:
+                if int(year) >= 2016:
                     csv_writer.writerow([date_string, nff_canonical.format(link.attrs['href'])])
 
     return True
@@ -96,7 +97,7 @@ def get_tournament_links(async_session, loop, tournaments_list):
 def get_players_names_from_file(tournament):
     names = set()
     if not path.isfile('names/{}.csv'.format(tournament.name)):
-        with open('names/{}.csv'.format(tournament.name), 'w') as csv_file:
+        with open('names/{}.csv'.format(tournament.name), 'w', newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow(['name'])
         return names
@@ -125,7 +126,9 @@ def get_names_for_match(tournament, link, names):
     return new_names
 
 
-def get_names_for_matches(tournament, links, names):
+def get_names_for_matches(tournament):
+    links = get_links_for_tournament_from_file(tournament)
+    names = get_players_names_from_file(tournament)
     new_names_list = set()
     for link in links:
         new_names_list.update(get_names_for_match(
@@ -133,7 +136,7 @@ def get_names_for_matches(tournament, links, names):
 
     for name in new_names_list:
         print(f"New player found {name} for {tournament.name}")
-        with open('names/{}.csv'.format(tournament.name), 'a') as csv_file:
+        with open('names/{}.csv'.format(tournament.name), 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
             writer.writerow([name])
 
@@ -148,14 +151,15 @@ def main():
     else:
         for (_, _, filenames) in walk('matches'):
             for file in filenames:
-                remove('matches/{}'.format(file))
+                print(file)
+#                remove('matches/{}'.format(file))
 
     get_tournament_links(async_session, loop, tournaments_list)
 
-    for tournament in tournaments_list:
-        links = get_links_for_tournament_from_file(tournament)
-        names = get_players_names_from_file(tournament)
-        get_names_for_matches(tournament, links, names)
+    executor = futures.ThreadPoolExecutor(max_workers=20)
+    executor.map(get_names_for_matches, tournaments_list)
+#    for tournament in tournaments_list:
+#        get_names_for_matches(tournament)
 
 
 if __name__ == "__main__":
